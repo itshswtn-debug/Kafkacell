@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pembukuan BRILink Kafka Cell</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal-enter { animation: modalFadeIn 0.2s ease-out forwards; }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .custom-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .custom-scroll { -webkit-overflow-scrolling: touch; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col relative">
+
+    <!-- Header App -->
+    <header class="bg-blue-900 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-700 p-2.5 rounded-lg shadow-inner flex items-center justify-center">
+                    <i class="fa-solid fa-building-columns text-xl text-orange-400"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">BRILINK KAFKA CELL</h1>
+                    <p class="text-xs text-blue-200" id="headerInfo">Cabang: - | Shift: -</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap justify-center gap-2">
+                <button onclick="toggleModal('riwayatModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Riwayat
+                </button>
+                <button onclick="toggleModal('configModal')" class="bg-blue-800 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 border border-blue-700">
+                    <i class="fa-solid fa-gear"></i> Pengaturan
+                </button>
+                <button onclick="copyShiftReport()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow flex items-center gap-2">
+                    <i class="fa-brands fa-whatsapp"></i> Salin Laporan
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Notifikasi Toast -->
+    <div id="toast" class="hidden p-4 rounded-lg shadow-xl toast-enter flex justify-between items-center text-sm font-semibold fixed bottom-6 right-6 z-50 min-w-[260px] border">
+        <span id="toastMsg"></span>
+        <button onclick="document.getElementById('toast').classList.add('hidden')" class="text-lg opacity-70 hover:opacity-100 ml-4">&times;</button>
+    </div>
+
+    <!-- Main Container (Tampilan Depan) -->
+    <main class="max-w-7xl mx-auto px-4 py-6 w-full flex-grow space-y-6">
+
+        <!-- Dashboard Keuangan & Saldo Digital -->
+        <section>
+            <div class="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
+                <h2 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-wallet text-blue-600 mr-2"></i>Keuangan & Saldo Digital</h2>
+                <div class="text-xs text-slate-500 italic">*Dihitung dari Saldo Awal ± Transaksi</div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3" id="dashboardUang"></div>
+        </section>
+
+        <!-- Dashboard Stok Chip Game -->
+        <section class="mt-6">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
+                <h2 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-gamepad text-purple-600 mr-2"></i>Sisa Stok Chip Game & Modal</h2>
+                <div class="text-xs text-slate-500 italic">*Nilai Modal dihitung otomatis</div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="dashboardChip"></div>
+        </section>
+
+        <!-- Dashboard Stok Voucher Fisik -->
+        <section class="mt-6">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
+                <h2 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-ticket text-orange-500 mr-2"></i>Sisa Stok Voucher (Pcs)</h2>
+                <div class="text-xs text-slate-500 italic">*Sisa lembar fisik</div>
+            </div>
+            <div class="grid grid-cols-3 md:grid-cols-6 gap-3" id="dashboardVoucher"></div>
+        </section>
+
+        <!-- Form Input Transaksi Terpusat -->
+        <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-sm border border-slate-200 mt-8">
+            <h2 class="text-lg font-bold text-blue-900 mb-5 border-b pb-3"><i class="fa-solid fa-plus-circle mr-2"></i>Catat Transaksi Baru</h2>
+            <form id="trxForm" onsubmit="addTransaction(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600 mb-1">Tanggal</label>
+                    <input type="date" id="trxDate" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                </div>
+                
+                <div class="grid grid-cols-1 gap-4">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-sm font-semibold text-slate-600">Jenis Transaksi</label>
+                            <button type="button" onclick="toggleModal('trxTypeModal')" class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 bg-blue-50 px-2 py-1 rounded">
+                                <i class="fa-solid fa-gear"></i> Tambah / Hapus
+                            </button>
+                        </div>
+                        <select id="trxType" required onchange="toggleFormMode()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none"></select>
+                    </div>
+                    
+                    <div id="sourceGroup">
+                        <label class="block text-sm font-semibold text-slate-600 mb-1">Sumber Dana / Stok Terpotong</label>
+                        <select id="trxSource" onchange="toggleStokInput()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none"></select>
+                    </div>
+                </div>
+
+                <!-- Input Kuantitas Stok -->
+                <div id="stokInputContainer" class="hidden grid grid-cols-2 gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div class="col-span-2">
+                        <label id="stokLabel" class="block text-sm font-bold text-amber-900 mb-1">Jumlah Barang Keluar</label>
+                        <input type="number" id="trxStokQty" min="0" step="0.01" placeholder="Misal: 1 atau 0.5" class="w-full px-4 py-2.5 bg-white border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 font-bold outline-none">
+                        <p id="stokHelper" class="text-xs text-amber-700 mt-1">Isi 1 untuk 1 Pcs / 1 B. Gunakan titik untuk desimal.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600 mb-1">Nominal / Pokok Transaksi (Rp)</label>
+                    <input type="number" id="trxNominal" min="0" required placeholder="Contoh: 50000" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-base focus:ring-2 focus:ring-blue-600 font-bold outline-none">
+                </div>
+
+                <!-- METODE PEMBAYARAN -->
+                <div id="paymentGroup" class="p-4 bg-blue-50/50 border border-blue-100 rounded-lg space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-blue-900 mb-1">Pelanggan Bayar Dengan</label>
+                        <select id="trxPaymentMethod" onchange="toggleReceiveAccount()" class="w-full px-4 py-2.5 bg-white border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                            <option value="Tunai">Uang Tunai (Masuk Laci)</option>
+                            <option value="Transfer">Transfer Rekening (Non-Tunai)</option>
+                        </select>
+                    </div>
+                    <div id="receiveAccountContainer" class="hidden transition-all duration-300">
+                        <label class="block text-sm font-semibold text-blue-900 mb-1">Terima Transfer Di:</label>
+                        <select id="trxReceiveAccount" class="w-full px-4 py-2.5 bg-white border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none"></select>
+                    </div>
+                    <div id="adminTunaiContainer" class="hidden pt-2 border-t border-blue-100 flex items-center gap-2">
+                        <input type="checkbox" id="trxAdminTunai" class="w-4 h-4 text-blue-600 rounded border-blue-300 focus:ring-blue-500 cursor-pointer">
+                        <label for="trxAdminTunai" class="text-xs font-semibold text-blue-900 cursor-pointer">Admin Dibayar Tunai / Potong Luar (Masuk Kas Laci)</label>
+                    </div>
+                </div>
+
+                <!-- BIAYA DAN FEE -->
+                <div id="biayaGroup" class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-600 mb-1">Biaya / Laba (Rp)</label>
+                        <input type="number" id="trxBiaya" placeholder="Contoh: 2000" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-emerald-600 mb-1">Fee Bersih (Rp)</label>
+                        <input type="number" id="trxFee" placeholder="Contoh: 1000" class="w-full px-4 py-2.5 bg-slate-50 border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600 mb-1">Keterangan / Tujuan (Opsional)</label>
+                    <input type="text" id="trxDesc" placeholder="Nama Pelanggan / No. HP / ID" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                </div>
+                
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-lg text-base transition shadow-md mt-4 flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i> Simpan Transaksi
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <!-- Modal Riwayat Transaksi -->
+    <div id="riwayatModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl modal-enter flex flex-col max-h-[95vh] h-full">
+            <div class="flex justify-between items-center p-5 border-b shrink-0">
+                <h3 class="text-xl font-bold text-slate-800"><i class="fa-solid fa-list-ul text-blue-600 mr-2"></i>Riwayat Transaksi</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="openConfirmClearModal()" class="text-xs text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-md transition font-medium border border-red-200 flex items-center gap-1">
+                        <i class="fa-solid fa-trash"></i> Hapus Semua
+                    </button>
+                    <button onclick="toggleModal('riwayatModal')" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-times text-xl"></i></button>
+                </div>
+            </div>
+            
+            <div class="p-5 flex-grow flex flex-col min-h-0 space-y-4 overflow-y-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200 shrink-0">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Cari Kata Kunci</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-search text-xs"></i></span>
+                            <input type="text" id="filterSearch" onkeyup="renderData()" placeholder="Nama, ket, nominal..." class="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Filter Shift</label>
+                        <select id="filterShift" onchange="renderData()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none">
+                            <option value="">Semua Shift</option>
+                            <option value="Shift 1">Shift 1</option>
+                            <option value="Shift 2">Shift 2</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Filter Saldo / Akun</label>
+                        <select id="filterAccount" onchange="renderData()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Filter Tanggal</label>
+                        <div class="flex gap-2">
+                            <input type="date" id="filterDate" onchange="renderData()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-blue-500 outline-none">
+                            <button onclick="resetFilters()" title="Reset Filter" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-md transition font-medium border border-slate-300 flex items-center justify-center">
+                                <i class="fa-solid fa-rotate-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="overflow-auto max-h-[350px] border border-slate-200 rounded-lg custom-scroll shrink-0 relative">
+                    <table class="w-full text-left text-sm whitespace-nowrap">
+                        <thead class="bg-slate-100 text-slate-700 uppercase text-[10px] tracking-wider sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="p-3 font-semibold">Tgl & Info</th>
+                                <th class="p-3 font-semibold">Jenis</th>
+                                <th class="p-3 font-semibold">Alur Keuangan</th>
+                                <th class="p-3 font-semibold text-right">Nominal</th>
+                                <th class="p-3 font-semibold text-right">Fee</th>
+                                <th class="p-3 font-semibold text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+
+                <div class="border border-emerald-300 rounded-lg overflow-hidden bg-emerald-50 shrink-0 shadow-sm mt-4">
+                    <div class="bg-emerald-600 px-3 py-2 border-b border-emerald-700 flex justify-between items-center text-white">
+                        <h4 class="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-cash-register"></i> Rincian Arus Kas Laci (Sesuai Filter)
+                        </h4>
+                        <span class="text-[10px] text-emerald-100 italic">*Akhir = Awal + Masuk + Chip + Biaya/Laba - Keluar</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-emerald-100/70 text-emerald-900 border-b border-emerald-200 font-bold">
+                                <tr>
+                                    <th class="p-2.5">Kas Laci Awal</th>
+                                    <th class="p-2.5">Uang Masuk Tunai (Inc. Voucher)</th>
+                                    <th class="p-2.5">Uang Masuk Chip</th>
+                                    <th class="p-2.5">Jumlah Biaya / Laba</th>
+                                    <th class="p-2.5 text-red-600">Uang Keluar Tunai</th>
+                                    <th class="p-2.5 text-emerald-900 bg-emerald-200 text-sm font-extrabold">Hasil Akhir Kas Laci</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white">
+                                    <td class="p-2.5 font-semibold text-slate-700" id="sumLaciAwal">Rp0</td>
+                                    <td class="p-2.5 font-semibold text-emerald-700" id="sumLaciMasuk">Rp0</td>
+                                    <td class="p-2.5 font-semibold text-purple-700" id="sumLaciChip">Rp0</td>
+                                    <td class="p-2.5 font-semibold text-blue-600" id="sumLaciBiaya">Rp0</td>
+                                    <td class="p-2.5 font-semibold text-red-600" id="sumLaciKeluar">Rp0</td>
+                                    <td class="p-2.5 font-extrabold text-emerald-900 bg-emerald-100 text-sm" id="sumLaciAkhir">Rp0</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Pengaturan -->
+    <div id="configModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl modal-enter flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-5 border-b shrink-0">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-sliders text-blue-600 mr-2"></i>Pengaturan Saldo & Stok Awal</h3>
+                <button onclick="toggleModal('configModal')" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto custom-scroll flex-grow space-y-6">
+                
+                <!-- BAGIAN CABANG & SHIFT -->
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs font-semibold text-blue-800 uppercase">Nama Cabang</label>
+                            <button type="button" onclick="toggleModal('branchModal')" class="text-[10px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 bg-blue-200 px-1.5 py-0.5 rounded transition">
+                                <i class="fa-solid fa-gear"></i> Kelola
+                            </button>
+                        </div>
+                        <select id="configBranch" class="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 font-medium outline-none"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-blue-800 uppercase mb-1">Shift Kerja</label>
+                        <select id="configShift" class="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 font-medium outline-none">
+                            <option value="Shift 1">Shift 1</option>
+                            <option value="Shift 2">Shift 2</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-bold text-slate-700 mb-3 border-b pb-1">1. Saldo Awal Keuangan (Rupiah)</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="configUangContainer"></div>
+                </div>
+
+                <div class="bg-purple-50 p-4 rounded-lg border border-purple-100 shadow-sm">
+                    <h3 class="text-sm font-bold text-purple-900 mb-1">2. Stok Awal Chip Game (B)</h3>
+                    <p class="text-xs text-purple-700 mb-3 bg-purple-100 p-2 rounded">
+                        <i class="fa-solid fa-circle-info mr-1"></i>Isi kuantitas awal (B). Nilai modal (Rp) dihitung otomatis.
+                    </p>
+                    <div class="grid grid-cols-2 gap-4" id="configChipContainer"></div>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-bold text-slate-700 mb-3 border-b pb-1">3. Stok Awal Voucher (Pcs / Lembar)</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="configVoucherContainer"></div>
+                </div>
+
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl shrink-0">
+                <button onclick="toggleModal('configModal')" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50">Batal</button>
+                <button onclick="saveConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold text-white shadow-md flex items-center gap-2">
+                    <i class="fa-solid fa-check"></i> Simpan Pengaturan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Kelola Cabang -->
+    <div id="branchModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md modal-enter flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-5 border-b">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-store text-blue-600 mr-2"></i>Kelola Daftar Cabang</h3>
+                <button onclick="toggleModal('branchModal')" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-5 flex-grow overflow-y-auto custom-scroll">
+                <form onsubmit="addCustomBranch(event)" class="flex gap-2 mb-5">
+                    <input type="text" id="newBranchName" required placeholder="Nama cabang baru..." class="flex-grow px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow"><i class="fa-solid fa-plus"></i></button>
+                </form>
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Daftar Cabang Tersedia</h4>
+                <ul id="branchList" class="space-y-2 border border-slate-100 rounded-lg p-2 bg-slate-50"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Kelola Jenis Transaksi -->
+    <div id="trxTypeModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md modal-enter flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-5 border-b">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-list-check text-blue-600 mr-2"></i>Kelola Jenis Transaksi</h3>
+                <button onclick="toggleModal('trxTypeModal')" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-5 flex-grow overflow-y-auto custom-scroll">
+                <form onsubmit="addCustomTrxType(event)" class="flex gap-2 mb-5">
+                    <input type="text" id="newTrxTypeName" required placeholder="Nama jenis transaksi baru..." class="flex-grow px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-600 outline-none">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow"><i class="fa-solid fa-plus"></i></button>
+                </form>
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Daftar Jenis Transaksi Aktif</h4>
+                <ul id="trxTypeList" class="space-y-2 border border-slate-100 rounded-lg p-2 bg-slate-50"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Konfirmasi Hapus Semua -->
+    <div id="confirmClearModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm modal-enter p-5 text-center">
+            <div class="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-800 mb-1">Hapus Seluruh Riwayat?</h3>
+            <p class="text-xs text-slate-500 mb-5">Tindakan ini akan menghapus semua catatan transaksi yang tersimpan dan tidak bisa dibatalkan.</p>
+            <div class="flex gap-2 justify-center">
+                <button onclick="toggleModal('confirmClearModal')" class="w-1/2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold">Batal</button>
+                <button onclick="clearAll()" class="w-1/2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold shadow">Ya, Hapus</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ============================================== -->
+    <!-- SCRIPT UTAMA SISTEM PEMBUKUAN LOKAL -->
+    <!-- ============================================== -->
+    <script>
+        const accounts = [
+            { id: 'laci', name: 'Kas Laci', type: 'uang', icon: 'fa-cash-register', color: 'text-emerald-600', border: 'border-emerald-500', bg: 'bg-emerald-50' },
+            { id: 'bri', name: 'BRI', type: 'uang', icon: 'fa-building-columns', color: 'text-blue-700', border: 'border-blue-500', bg: 'bg-blue-50' },
+            { id: 'seabank', name: 'Seabank', type: 'uang', icon: 'fa-piggy-bank', color: 'text-orange-500', border: 'border-orange-500', bg: 'bg-orange-50' },
+            { id: 'dana', name: 'DANA', type: 'uang', icon: 'fa-wallet', color: 'text-blue-400', border: 'border-blue-400', bg: 'bg-blue-50' },
+            { id: 'gopay', name: 'GoPay', type: 'uang', icon: 'fa-mobile-button', color: 'text-green-500', border: 'border-green-500', bg: 'bg-green-50' },
+            { id: 'superbank', name: 'Superbank', type: 'uang', icon: 'fa-bolt', color: 'text-purple-600', border: 'border-purple-500', bg: 'bg-purple-50' },
+            { id: 'digipos', name: 'Digipos', type: 'uang', icon: 'fa-signal', color: 'text-red-500', border: 'border-red-500', bg: 'bg-red-50' },
+            { id: 'sidiva', name: 'Sidiva', type: 'uang', icon: 'fa-shield-halved', color: 'text-teal-600', border: 'border-teal-500', bg: 'bg-teal-50' },
+            
+            { id: 'chip_royal', name: 'Chip Royal', type: 'chip', unit: 'B', modal: 60000, icon: 'fa-coins', color: 'text-purple-700', border: 'border-purple-500', bg: 'bg-purple-100' },
+            { id: 'chip_hgi', name: 'Chip HGI', type: 'chip', unit: 'B', modal: 50000, icon: 'fa-gamepad', color: 'text-pink-600', border: 'border-pink-500', bg: 'bg-pink-100' },
+
+            { id: 'v_xl', name: 'V. XL', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-blue-600', border: 'border-blue-500', bg: 'bg-blue-50' },
+            { id: 'v_axis', name: 'V. Axis', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-purple-600', border: 'border-purple-500', bg: 'bg-purple-50' },
+            { id: 'v_3', name: 'V. 3', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-slate-800', border: 'border-slate-500', bg: 'bg-slate-100' },
+            { id: 'v_im3', name: 'V. IM3', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-yellow-600', border: 'border-yellow-500', bg: 'bg-yellow-50' },
+            { id: 'v_telkomsel', name: 'V. Tsel', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-red-600', border: 'border-red-500', bg: 'bg-red-50' },
+            { id: 'v_smartfren', name: 'V. Smartfren', type: 'voucher', unit: 'Pcs', icon: 'fa-ticket', color: 'text-pink-600', border: 'border-pink-500', bg: 'bg-pink-50' }
+        ];
+
+        const defaultTrxTypes = [
+            "Transfer", "Tarik Tunai", "TF ATM", "Terima Gadai", "Tebus Gadai", 
+            "Scan QRIS", "Isi Pulsa/Data", "Top Up DANA", "Top Up GoPay", 
+            "Chip Royal", "Chip HGI", "V. XL", "V. Axis", "V. 3", "V. IM3", 
+            "V. Telkomsel", "V. Smartfren", "Biaya Operasional", "Lain-lain"
+        ];
+
+        // Array Daftar Cabang
+        const defaultBranches = ["Binturu", "Anggrek", "Polidewa", "Arkopi", "Cakalang", "Songka"];
+        let customBranches = JSON.parse(localStorage.getItem('brilink_branches_v15')) || defaultBranches;
+
+        let customTrxTypes = JSON.parse(localStorage.getItem('brilink_trx_types_v15')) || defaultTrxTypes;
+        let config = JSON.parse(localStorage.getItem('brilink_config_v15')) || { 
+            branchName: customBranches[0], shift: 'Shift 1', saldo: {} 
+        };
+        let transactions = JSON.parse(localStorage.getItem('brilink_transactions_v15')) || [];
+
+        accounts.forEach(a => { if(config.saldo[a.id] === undefined) config.saldo[a.id] = 0; });
+
+        const formatRp = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka || 0);
+
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.className = `p-4 rounded-lg shadow-xl toast-enter flex justify-between items-center text-sm font-semibold fixed bottom-6 right-6 z-50 min-w-[260px] border ${isError ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`;
+            document.getElementById('toastMsg').innerHTML = `<i class="fa-solid ${isError ? 'fa-triangle-exclamation' : 'fa-circle-check'} mr-2"></i> ${msg}`;
+            toast.classList.remove('hidden');
+            setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+        }
+
+        function toggleModal(id) {
+            const modal = document.getElementById(id);
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                if (id === 'configModal') {
+                    document.getElementById('configBranch').value = config.branchName || customBranches[0];
+                    document.getElementById('configShift').value = config.shift || 'Shift 1';
+                    accounts.forEach(acc => {
+                        const input = document.getElementById(`init_${acc.id}`);
+                        if(input) input.value = config.saldo[acc.id] || 0;
+                    });
+                }
+            } else { modal.classList.add('hidden'); }
+        }
+
+        function openConfirmClearModal() { toggleModal('confirmClearModal'); }
+
+        function toggleFormMode() {
+            const type = document.getElementById('trxType').value;
+            const sourceGrp = document.getElementById('sourceGroup');
+            const paymentGrp = document.getElementById('paymentGroup');
+            const biayaGrp = document.getElementById('biayaGroup');
+            
+            if (type === 'Terima Gadai') {
+                sourceGrp.classList.remove('hidden');
+                paymentGrp.classList.add('hidden');
+                biayaGrp.classList.add('hidden');
+            } else if (type === 'Tebus Gadai') {
+                sourceGrp.classList.add('hidden');
+                paymentGrp.classList.remove('hidden');
+                biayaGrp.classList.remove('hidden');
+            } else if (type === 'Biaya Operasional') {
+                sourceGrp.classList.add('hidden');
+                paymentGrp.classList.add('hidden');
+                biayaGrp.classList.add('hidden');
+            } else {
+                sourceGrp.classList.remove('hidden');
+                paymentGrp.classList.remove('hidden');
+                biayaGrp.classList.remove('hidden');
+            }
+            toggleStokInput();
+        }
+
+        function toggleStokInput() {
+            const type = document.getElementById('trxType').value;
+            const sourceId = document.getElementById('trxSource').value;
+            const account = accounts.find(a => a.id === sourceId);
+            const container = document.getElementById('stokInputContainer');
+            const stokInput = document.getElementById('trxStokQty');
+            const stokLabel = document.getElementById('stokLabel');
+            const stokHelper = document.getElementById('stokHelper');
+
+            if (account && (account.type === 'voucher' || account.type === 'chip') && type !== 'Tebus Gadai') {
+                container.classList.remove('hidden');
+                stokInput.required = true;
+                stokLabel.innerText = `Jumlah Keluar (${account.unit})`;
+                stokHelper.innerText = account.type === 'chip' ? "Isi 1 untuk 1 B. Isi 0.5 untuk 500 M." : "Isi lembar voucher (Pcs) yang terjual.";
+            } else {
+                container.classList.add('hidden');
+                stokInput.required = false;
+                stokInput.value = '';
+            }
+        }
+
+        function toggleReceiveAccount() {
+            const pm = document.getElementById('trxPaymentMethod').value;
+            const container = document.getElementById('receiveAccountContainer');
+            const receiveSelect = document.getElementById('trxReceiveAccount');
+            const adminTunaiContainer = document.getElementById('adminTunaiContainer');
+            const adminTunaiCheckbox = document.getElementById('trxAdminTunai');
+
+            if (pm === 'Transfer') {
+                container.classList.remove('hidden');
+                receiveSelect.required = true;
+                if (adminTunaiContainer) adminTunaiContainer.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+                receiveSelect.required = false;
+                receiveSelect.value = "";
+                if (adminTunaiContainer) adminTunaiContainer.classList.add('hidden');
+                if (adminTunaiCheckbox) adminTunaiCheckbox.checked = false;
+            }
+        }
+
+        window.onload = () => {
+            document.getElementById('trxDate').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('headerInfo').innerText = `Cabang: ${config.branchName || customBranches[0]} | Shift: ${config.shift || 'Shift 1'}`;
+
+            const uangCont = document.getElementById('configUangContainer');
+            const voucherCont = document.getElementById('configVoucherContainer');
+            const chipCont = document.getElementById('configChipContainer');
+            const srcSel = document.getElementById('trxSource');
+            const recSel = document.getElementById('trxReceiveAccount');
+            const filterAccSel = document.getElementById('filterAccount');
+
+            srcSel.innerHTML = '<option value="">-- Pilih Sumber/Stok --</option>';
+            recSel.innerHTML = '<option value="">-- Pilih Rekening Penerima --</option>';
+            filterAccSel.innerHTML = '<option value="">Semua Akun / Saldo</option>';
+
+            accounts.forEach(acc => {
+                const html = `
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1"><i class="fa-solid ${acc.icon} mr-1 ${acc.color}"></i>${acc.name} ${acc.unit ? `(${acc.unit})` : ''}</label>
+                        <input type="number" id="init_${acc.id}" step="${acc.type==='chip'?'0.01':'1'}" value="${config.saldo[acc.id] || 0}" class="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 font-medium outline-none">
+                    </div>`;
+                if(acc.type === 'uang') uangCont.innerHTML += html;
+                else if(acc.type === 'chip') chipCont.innerHTML += html;
+                else voucherCont.innerHTML += html;
+
+                if(acc.id !== 'laci') {
+                    if(acc.type === 'uang') recSel.innerHTML += `<option value="${acc.id}">${acc.name}</option>`;
+                }
+                
+                const optGroup = acc.type === 'uang' ? 'Rekening Uang' : (acc.type==='chip' ? 'Stok Chip Game' : 'Stok Voucher');
+                srcSel.innerHTML += `<option value="${acc.id}">[${optGroup}] ${acc.name}</option>`;
+                filterAccSel.innerHTML += `<option value="${acc.id}">${acc.name}</option>`;
+            });
+
+            renderBranches();
+            renderTrxTypes();
+            renderData();
+        };
+
+        // --- FUNGSI KELOLA CABANG ---
+        function renderBranches() {
+            const select = document.getElementById('configBranch');
+            const list = document.getElementById('branchList');
+            if (!select) return;
+
+            let selectHtml = '';
+            let listHtml = '';
+
+            customBranches.forEach(b => {
+                selectHtml += `<option value="${b}">${b}</option>`;
+                listHtml += `
+                    <li class="flex justify-between items-center p-2 hover:bg-slate-100 rounded border-b border-slate-100 last:border-0 text-sm">
+                        <span class="font-medium text-slate-700">${b}</span> 
+                        <button type="button" onclick="deleteCustomBranch('${b}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button>
+                    </li>`;
+            });
+
+            select.innerHTML = selectHtml;
+            if (list) list.innerHTML = listHtml;
+            select.value = config.branchName || customBranches[0];
+        }
+
+        function addCustomBranch(e) {
+            e.preventDefault();
+            const input = document.getElementById('newBranchName');
+            const name = input.value.trim();
+            if (name && !customBranches.includes(name)) {
+                customBranches.push(name);
+                localStorage.setItem('brilink_branches_v15', JSON.stringify(customBranches));
+                input.value = '';
+                renderBranches();
+                showToast(`Cabang "${name}" berhasil ditambahkan!`);
+            } else if (customBranches.includes(name)) {
+                showToast(`Cabang tersebut sudah ada!`, true);
+            }
+        }
+
+        function deleteCustomBranch(name) {
+            if (customBranches.length <= 1) return showToast("Minimal harus tersisa 1 cabang!", true);
+            customBranches = customBranches.filter(b => b !== name);
+            localStorage.setItem('brilink_branches_v15', JSON.stringify(customBranches));
+            
+            if (config.branchName === name) {
+                config.branchName = customBranches[0];
+                localStorage.setItem('brilink_config_v15', JSON.stringify(config));
+                document.getElementById('headerInfo').innerText = `Cabang: ${config.branchName} | Shift: ${config.shift}`;
+            }
+            renderBranches();
+            showToast(`Cabang "${name}" dihapus!`);
+        }
+
+        // --- FUNGSI KELOLA JENIS TRANSAKSI ---
+        function renderTrxTypes() {
+            const select = document.getElementById('trxType');
+            const list = document.getElementById('trxTypeList');
+            if (!select) return;
+
+            let selectHtml = '<option value="">-- Pilih --</option>';
+            let listHtml = '';
+
+            customTrxTypes.forEach(type => {
+                selectHtml += `<option value="${type}">${type}</option>`;
+                listHtml += `
+                    <li class="flex justify-between items-center p-2 hover:bg-slate-100 rounded border-b border-slate-100 last:border-0 text-sm">
+                        <span class="font-medium text-slate-700">${type}</span> 
+                        <button type="button" onclick="deleteCustomTrxType('${type}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button>
+                    </li>`;
+            });
+
+            select.innerHTML = selectHtml;
+            if (list) list.innerHTML = listHtml;
+        }
+
+        function addCustomTrxType(e) {
+            e.preventDefault();
+            const input = document.getElementById('newTrxTypeName');
+            const name = input.value.trim();
+            if (name && !customTrxTypes.includes(name)) {
+                customTrxTypes.push(name);
+                localStorage.setItem('brilink_trx_types_v15', JSON.stringify(customTrxTypes));
+                input.value = '';
+                renderTrxTypes();
+                showToast(`Jenis transaksi "${name}" ditambahkan!`);
+            } else if (customTrxTypes.includes(name)) {
+                showToast(`Jenis transaksi tersebut sudah ada!`, true);
+            }
+        }
+
+        function deleteCustomTrxType(name) {
+            if (customTrxTypes.length <= 1) return showToast("Minimal harus ada 1 jenis transaksi!", true);
+            customTrxTypes = customTrxTypes.filter(t => t !== name);
+            localStorage.setItem('brilink_trx_types_v15', JSON.stringify(customTrxTypes));
+            renderTrxTypes();
+            showToast(`Jenis transaksi "${name}" dihapus!`);
+        }
+
+
+        function saveConfig() {
+            config.branchName = document.getElementById('configBranch').value || customBranches[0];
+            config.shift = document.getElementById('configShift').value;
+            accounts.forEach(acc => {
+                const val = parseFloat(document.getElementById(`init_${acc.id}`).value);
+                config.saldo[acc.id] = isNaN(val) ? 0 : val;
+            });
+            localStorage.setItem('brilink_config_v15', JSON.stringify(config));
+            document.getElementById('headerInfo').innerText = `Cabang: ${config.branchName} | Shift: ${config.shift}`;
+            renderData();
+            toggleModal('configModal');
+            showToast("Pengaturan berhasil disimpan!");
+        }
+
+        function addTransaction(e) {
+            e.preventDefault();
+            const trxType = document.getElementById('trxType').value;
+            const sourceId = document.getElementById('trxSource').value;
+            const sourceObj = accounts.find(a => a.id === sourceId) || {};
+            const paymentMethod = document.getElementById('trxPaymentMethod').value;
+            const receiveId = document.getElementById('trxReceiveAccount').value;
+            const adminTunai = paymentMethod === 'Transfer' && document.getElementById('trxAdminTunai')?.checked;
+            
+            if (trxType !== 'Tebus Gadai' && trxType !== 'Biaya Operasional' && !sourceId) return showToast("Harap pilih Sumber Dana / Stok!", true);
+            if (trxType !== 'Terima Gadai' && trxType !== 'Biaya Operasional' && paymentMethod === 'Transfer' && !receiveId) return showToast("Harap pilih Rekening Penerima Transfer!", true);
+
+            const rawDesc = document.getElementById('trxDesc').value.trim();
+            const descFinal = rawDesc !== '' ? rawDesc : '-';
+
+            let trx = {
+                id: Date.now(),
+                date: document.getElementById('trxDate').value,
+                branch: config.branchName || customBranches[0], 
+                shift: config.shift || 'Shift 1', 
+                type: trxType,
+                desc: descFinal,
+                nominal: parseFloat(document.getElementById('trxNominal').value) || 0,
+                adminTunai: !!adminTunai,
+                biaya: 0, fee: 0, qty: 0,
+                sourceId: null, sourceName: '-', sourceType: 'uang', unit: '',
+                paymentMethod: '-', receiveId: null, receiveName: '-'
+            };
+
+            if (trxType === 'Terima Gadai') {
+                trx.sourceId = sourceId;
+                trx.sourceName = sourceObj.name;
+                trx.sourceType = sourceObj.type;
+            } else if (trxType === 'Tebus Gadai') {
+                trx.biaya = parseFloat(document.getElementById('trxBiaya').value) || 0;
+                trx.fee = parseFloat(document.getElementById('trxFee').value) || 0;
+                trx.paymentMethod = paymentMethod;
+                trx.receiveId = paymentMethod === 'Transfer' ? receiveId : 'laci';
+                trx.receiveName = paymentMethod === 'Transfer' ? accounts.find(a=>a.id===receiveId).name : 'Tunai (Laci)';
+            } else if (trxType === 'Biaya Operasional') {
+                trx.sourceId = 'laci';
+                trx.sourceName = 'Kas Laci';
+                trx.sourceType = 'uang';
+                trx.paymentMethod = 'Tunai';
+                trx.receiveId = null;
+                trx.receiveName = 'Biaya Operasional';
+            } else {
+                trx.sourceId = sourceId;
+                trx.sourceName = sourceObj.name;
+                trx.sourceType = sourceObj.type;
+                trx.unit = sourceObj.unit || '';
+                trx.qty = parseFloat(document.getElementById('trxStokQty').value) || 0;
+                trx.biaya = parseFloat(document.getElementById('trxBiaya').value) || 0;
+                trx.fee = parseFloat(document.getElementById('trxFee').value) || 0;
+                trx.paymentMethod = paymentMethod;
+                trx.receiveId = paymentMethod === 'Transfer' ? receiveId : 'laci';
+                trx.receiveName = paymentMethod === 'Transfer' ? accounts.find(a=>a.id===receiveId).name : 'Tunai (Laci)';
+            }
+
+            // Simpan ke Browser Lokal
+            transactions.unshift(trx);
+            localStorage.setItem('brilink_transactions_v15', JSON.stringify(transactions));
+            
+            // ============================================
+            // JALUR SINKRONISASI KE CLOUD FIRESTORE FIREBASE
+            // ============================================
+            if (window.simpanKeFirebase) {
+                window.simpanKeFirebase(trx);
+            }
+
+            document.getElementById('trxNominal').value = '';
+            document.getElementById('trxBiaya').value = '';
+            document.getElementById('trxFee').value = '';
+            document.getElementById('trxStokQty').value = '';
+            document.getElementById('trxDesc').value = '';
+            if (document.getElementById('trxAdminTunai')) document.getElementById('trxAdminTunai').checked = false;
+            
+            renderData();
+            showToast("Transaksi berhasil dicatat!");
+        }
+
+        function getCalculatedBalances(dataTrx) {
+            let current = JSON.parse(JSON.stringify(config.saldo));
+            dataTrx.forEach(trx => {
+                let sId = trx.sourceId; 
+                let targetAcc = trx.receiveId;
+
+                if (trx.type === 'Terima Gadai') {
+                    if (sId && current[sId] !== undefined) current[sId] -= trx.nominal;
+                } else if (trx.type === 'Tebus Gadai') {
+                    if (trx.adminTunai && targetAcc) {
+                        if (current[targetAcc] !== undefined) current[targetAcc] += trx.nominal;
+                        if (current['laci'] !== undefined) current['laci'] += trx.biaya;
+                    } else {
+                        if (targetAcc && current[targetAcc] !== undefined) current[targetAcc] += (trx.nominal + trx.biaya);
+                    }
+                } else if (trx.type === 'Biaya Operasional') {
+                    if (current['laci'] !== undefined) current['laci'] -= trx.nominal;
+                } else {
+                    if (trx.sourceType === 'voucher' || trx.sourceType === 'chip') {
+                        if (sId && current[sId] !== undefined) current[sId] -= trx.qty;
+                    } else {
+                        if (sId && current[sId] !== undefined) current[sId] -= trx.nominal;
+                    }
+                    
+                    if (trx.adminTunai && targetAcc) {
+                        if (current[targetAcc] !== undefined) current[targetAcc] += trx.nominal;
+                        if (current['laci'] !== undefined) current['laci'] += trx.biaya;
+                    } else {
+                        if (targetAcc && current[targetAcc] !== undefined) current[targetAcc] += (trx.nominal + trx.biaya);
+                    }
+                }
+            });
+            return current;
+        }
+
+        function renderData() {
+            let currentBalances = getCalculatedBalances([...transactions].reverse());
+            let totalProfit = 0;
+            transactions.forEach(trx => totalProfit += trx.fee);
+
+            const dashUang = document.getElementById('dashboardUang');
+            const dashVoucher = document.getElementById('dashboardVoucher');
+            const dashChip = document.getElementById('dashboardChip');
+            
+            dashUang.innerHTML = `<div class="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl shadow text-white flex flex-col justify-center"><p class="text-[10px] font-bold uppercase tracking-wider mb-1">Total Fee (Profit)</p><h3 class="text-lg font-bold">${formatRp(totalProfit)}</h3></div>`;
+            dashVoucher.innerHTML = ''; dashChip.innerHTML = '';
+
+            accounts.forEach(acc => {
+                const saldo = currentBalances[acc.id] || 0;
+                if(acc.type === 'uang') {
+                    dashUang.innerHTML += `<div class="bg-white p-3 rounded-xl shadow-sm border-l-4 ${acc.border} border-y border-r border-slate-200"><div class="flex items-center gap-2 mb-2"><i class="fa-solid ${acc.icon} ${acc.color}"></i><p class="text-[10px] font-bold text-slate-500">${acc.name}</p></div><h3 class="text-sm font-bold ${saldo<0?'text-red-600':acc.color}">${formatRp(saldo)}</h3></div>`;
+                } else if(acc.type === 'chip') {
+                    const nilaiModal = saldo * acc.modal;
+                    dashChip.innerHTML += `<div class="bg-white p-3 rounded-xl shadow-sm border-l-4 ${acc.border} border-y border-r border-slate-200"><div class="flex items-center gap-2 mb-1"><i class="fa-solid ${acc.icon} ${acc.color}"></i><p class="text-[10px] font-bold text-slate-500">${acc.name}</p></div><h3 class="text-sm font-bold ${acc.color}">${saldo} B</h3><p class="text-[10px] font-semibold text-slate-600 mt-1 bg-slate-50 p-1 rounded">Modal: ${formatRp(nilaiModal)}</p></div>`;
+                } else {
+                    dashVoucher.innerHTML += `<div class="bg-white p-3 rounded-xl shadow-sm border-l-4 ${acc.border} border-y border-r border-slate-200"><div class="flex items-center gap-2 mb-1"><i class="fa-solid ${acc.icon} ${acc.color}"></i><p class="text-[10px] font-bold text-slate-500 truncate">${acc.name}</p></div><h3 class="text-sm font-bold ${acc.color}">${saldo} Pcs</h3></div>`;
+                }
+            });
+
+            // Modal Filters
+            let fShift = document.getElementById('filterShift') ? document.getElementById('filterShift').value : '';
+            let fAccount = document.getElementById('filterAccount') ? document.getElementById('filterAccount').value : '';
+            let fDate = document.getElementById('filterDate') ? document.getElementById('filterDate').value : '';
+            let fSearch = document.getElementById('filterSearch') ? document.getElementById('filterSearch').value.toLowerCase().trim() : '';
+            
+            let filteredTrx = transactions;
+            if (fSearch) {
+                filteredTrx = filteredTrx.filter(t => t.type.toLowerCase().includes(fSearch) || t.sourceName.toLowerCase().includes(fSearch) || t.receiveName.toLowerCase().includes(fSearch) || t.desc.toLowerCase().includes(fSearch) || t.nominal.toString().includes(fSearch));
+            }
+            if (fShift) filteredTrx = filteredTrx.filter(t => t.shift === fShift);
+            if (fAccount) filteredTrx = filteredTrx.filter(t => t.sourceId === fAccount || t.receiveId === fAccount);
+            if (fDate) filteredTrx = filteredTrx.filter(t => t.date === fDate);
+
+            let laciMasuk = 0, laciKeluar = 0, laciBiaya = 0, laciChip = 0;
+            const tbody = document.getElementById('tableBody');
+            if (tbody) tbody.innerHTML = '';
+
+            filteredTrx.forEach(trx => {
+                if (trx.sourceId === 'laci') {
+                    laciKeluar += trx.nominal;
+                }
+                if (trx.receiveId === 'laci') {
+                    laciBiaya += trx.biaya;
+                    if (trx.sourceType === 'chip') laciChip += trx.nominal;
+                    else laciMasuk += trx.nominal;
+                } else if (trx.adminTunai) {
+                    laciBiaya += trx.biaya;
+                }
+
+                let badge = trx.sourceType !== 'uang' && trx.qty > 0 ? `<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold ml-1 border border-amber-200">Keluar: ${trx.qty} ${trx.unit}</span>` : '';
+                let adminBadge = trx.adminTunai ? `<span class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[9px] font-bold ml-1 border border-emerald-200">[Admin Tunai]</span>` : '';
+                
+                let sourceDisplay = trx.type === 'Tebus Gadai' ? '-' : `Terpotong dari: ${trx.sourceName} ${badge}`;
+                let paymentDisplay = (trx.type === 'Terima Gadai' || trx.type === 'Biaya Operasional') ? '-' : `Bayar via/Masuk: ${trx.receiveName} ${adminBadge}`;
+
+                if (tbody) {
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-50 border-b border-slate-100">
+                            <td class="p-3">
+                                <div class="font-semibold">${trx.date}</div>
+                                <div class="text-[10px] text-blue-600 font-medium">${trx.desc}</div>
+                                <div class="text-[9px] text-slate-400">${trx.shift || 'Shift 1'}</div>
+                            </td>
+                            <td class="p-3"><span class="px-2 py-1 rounded text-[11px] font-bold border bg-blue-100 text-blue-800">${trx.type}</span></td>
+                            <td class="p-3"><div class="text-[11px] font-bold">${sourceDisplay}</div><div class="text-[10px] mt-1 bg-slate-200 px-1 inline-block rounded">${paymentDisplay}</div></td>
+                            <td class="p-3 text-right font-bold">${formatRp(trx.nominal)}<div class="text-[10px] font-normal text-slate-500">+ Biaya: ${formatRp(trx.biaya)}</div></td>
+                            <td class="p-3 text-right font-bold text-emerald-600">+${formatRp(trx.fee)}</td>
+                            <td class="p-3 text-center">
+                                <button onclick="deleteTrx(${trx.id})" title="Hapus" class="text-red-400 hover:text-red-600 p-1"><i class="fa-solid fa-trash-can"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+            
+            if(tbody && filteredTrx.length===0) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-400">Belum ada riwayat transaksi</td></tr>`;
+
+            let laciAwal = config.saldo['laci'] || 0;
+            let laciAkhir = laciAwal + laciMasuk + laciChip + laciBiaya - laciKeluar;
+
+            if (document.getElementById('sumLaciAwal')) {
+                document.getElementById('sumLaciAwal').innerText = formatRp(laciAwal);
+                document.getElementById('sumLaciMasuk').innerText = formatRp(laciMasuk);
+                document.getElementById('sumLaciChip').innerText = formatRp(laciChip);
+                document.getElementById('sumLaciBiaya').innerText = formatRp(laciBiaya);
+                document.getElementById('sumLaciKeluar').innerText = formatRp(laciKeluar);
+                document.getElementById('sumLaciAkhir').innerText = formatRp(laciAkhir);
+            }
+        }
+
+        function deleteTrx(id) { 
+            transactions = transactions.filter(t => t.id !== id); 
+            localStorage.setItem('brilink_transactions_v15', JSON.stringify(transactions)); 
+            renderData(); 
+            showToast("Transaksi dihapus.");
+        }
+
+        function clearAll() { 
+            transactions = []; 
+            localStorage.setItem('brilink_transactions_v15', '[]'); 
+            renderData(); 
+            toggleModal('confirmClearModal');
+            showToast("Seluruh riwayat berhasil dihapus!");
+        }
+
+        function resetFilters() {
+            if(document.getElementById('filterSearch')) document.getElementById('filterSearch').value = ''; 
+            if(document.getElementById('filterShift')) document.getElementById('filterShift').value = ''; 
+            if(document.getElementById('filterAccount')) document.getElementById('filterAccount').value = ''; 
+            if(document.getElementById('filterDate')) document.getElementById('filterDate').value = ''; 
+            renderData();
+        }
+
+        function copyShiftReport() {
+            let currentBalances = getCalculatedBalances([...transactions].reverse());
+            
+            let laciMasuk = 0, laciKeluar = 0, laciBiaya = 0, laciChip = 0;
+            transactions.forEach(trx => {
+                if (trx.sourceId === 'laci') laciKeluar += trx.nominal;
+                if (trx.receiveId === 'laci') {
+                    laciBiaya += trx.biaya;
+                    if (trx.sourceType === 'chip') laciChip += trx.nominal;
+                    else laciMasuk += trx.nominal;
+                } else if (trx.adminTunai) {
+                    laciBiaya += trx.biaya;
+                }
+            });
+            let laciAwal = config.saldo['laci'] || 0;
+            let laciAkhir = laciAwal + laciMasuk + laciChip + laciBiaya - laciKeluar;
+
+            let text = `*LAPORAN SHIFT BRILINK KAFKA CELL*\n`;
+            text += `Cabang: ${config.branchName || customBranches[0]}\nShift: ${config.shift || 'Shift 1'}\n`;
+            text += `Tanggal: ${new Date().toISOString().slice(0, 10)}\n\n`;
+
+            text += `*SALDO AKHIR KEUANGAN*\n`;
+            accounts.filter(a => a.type === 'uang').forEach(acc => {
+                text += `- ${acc.name}: ${formatRp(currentBalances[acc.id] || 0)}\n`;
+            });
+            
+            text += `\n*SISA STOK CHIP & VOUCHER*\n`;
+            accounts.filter(a => a.type !== 'uang').forEach(acc => {
+                let saldo = currentBalances[acc.id] || 0;
+                if (acc.type === 'chip') {
+                    let modal = saldo * acc.modal;
+                    text += `- ${acc.name}: ${saldo} B (Modal: ${formatRp(modal)})\n`;
+                } else {
+                    text += `- ${acc.name}: ${saldo} Pcs\n`;
+                }
+            });
+
+            text += `\n*RINCIAN ARUS KAS LACI*\n`;
+            text += `- Saldo Awal Kas Laci: ${formatRp(laciAwal)}\n`;
+            text += `- Uang Masuk Tunai (inc. Voucher): ${formatRp(laciMasuk)}\n`;
+            text += `- Uang Masuk Tunai Khusus Chip: ${formatRp(laciChip)}\n`;
+            text += `- Jumlah Biaya / Laba Tunai (inc. Admin Luar): ${formatRp(laciBiaya)}\n`;
+            text += `- Uang Keluar Tunai: ${formatRp(laciKeluar)}\n`;
+            text += `----------------------------------------\n`;
+            text += `= HASIL AKHIR KAS LACI: ${formatRp(laciAkhir)}\n`;
+
+            text += `\n*RINCIAN TRANSAKSI*\n`;
+            let trxList = [...transactions].reverse();
+            if (trxList.length === 0) { text += `Belum ada transaksi.\n`; } 
+            else {
+                trxList.forEach((trx, i) => {
+                    text += `${i+1}. [${trx.type}] ${trx.desc}\n`;
+                    text += `   • Nominal: ${formatRp(trx.nominal)}\n`;
+                    let alur = (trx.type === 'Biaya Operasional' || trx.type === 'Terima Gadai') ? `Kas Laci (Uang Keluar)` : 
+                               (trx.type === 'Tebus Gadai') ? `Masuk Rekening/Tunai: ${trx.receiveName}` : 
+                               `Terpotong: ${trx.sourceName} ➔ Bayar via: ${trx.receiveName}`;
+                    text += `   • Alur: ${alur}\n`;
+                    let adminKet = trx.adminTunai ? `(Admin Tunai)` : `(Admin Transfer/Gabung)`;
+                    if(trx.biaya > 0) text += `   • Biaya/Laba: ${formatRp(trx.biaya)} ${adminKet}\n`;
+                    if(trx.fee > 0) text += `   • Fee Bersih: ${formatRp(trx.fee)}\n`;
+                    text += `\n`;
+                });
+            }
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => showToast("Laporan Berhasil Disalin!"));
+            } else {
+                let textArea = document.createElement("textarea");
+                textArea.value = text; document.body.appendChild(textArea); textArea.select();
+                try { document.execCommand('copy'); showToast("Laporan Berhasil Disalin!"); } 
+                catch (err) { showToast("Gagal menyalin.", true); }
+                textArea.remove();
+            }
+        }
+    </script>
+
+
+    <!-- ============================================== -->
+    <!-- KONFIGURASI FIREBASE CLOUD FIRESTORE           -->
+    <!-- ============================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC1fetiXa6K4cpYIxkrbe9Ed3NRuP9Zk40",
+            authDomain: "brilink-kafka-cell.firebaseapp.com",
+            databaseURL: "https://brilink-kafka-cell-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "brilink-kafka-cell",
+            storageBucket: "brilink-kafka-cell.firebasestorage.app",
+            messagingSenderId: "428133180218",
+            appId: "1:428133180218:web:5cb2591fdd0826a9d12603",
+            measurementId: "G-D515FVCYQV"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Fungsi otomatis mengirim data transaksi ke Cloud Firestore
+        window.simpanKeFirebase = async function(dataTransaksi) {
+            try {
+                await addDoc(collection(db, "transaksi_harian"), dataTransaksi);
+                console.log("Sukses: Data terkirim ke Cloud Firestore Firebase!");
+            } catch (error) {
+                console.error("Gagal mengirim ke Firebase:", error);
+            }
+        };
+    </script>
+</body>
+</html>
